@@ -1,0 +1,10 @@
+# Sender domains exempted ONLY from reject_unknown_sender_domain (the sender-domain
+# DNS-existence check). This does NOT bypass SPF/DKIM/rspamd/clamav scanning, does NOT
+# grant relay (reject_unauth_destination still applies), and recipients must still exist.
+# Keep this list to broken-but-wanted senders; one domain per line, result OK.
+#
+# 2026-07-03: SparkPost retries a Cloudflare notification to void@entreflux.group with
+# envelope sender @bounce1.cloudflare.com, a domain that publishes no A/MX (their
+# misconfiguration, verified against 1.1.1.1). Accept it so the content is captured in
+# the void@ mailbox instead of tempfailing forever.
+bounce1.cloudflare.com OK

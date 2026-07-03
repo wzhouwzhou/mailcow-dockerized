@@ -5,7 +5,7 @@ smtp       inet  n       -       n       -       1       postscreen
   -o syslog_name=haproxy
 smtpd      pass  -       -       n       -       -       smtpd
   -o smtpd_sasl_auth_enable=no
-  -o smtpd_sender_restrictions=permit_mynetworks,reject_unlisted_sender,reject_unknown_sender_domain
+  -o smtpd_sender_restrictions=permit_mynetworks,reject_unlisted_sender,$incident_sender_dns_exception_check,reject_unknown_sender_domain
 
 # smtpd tls-wrapped (smtps) on 465/tcp
 # TLS protocol can be modified by setting smtps_smtpd_tls_mandatory_protocols in extra.cf

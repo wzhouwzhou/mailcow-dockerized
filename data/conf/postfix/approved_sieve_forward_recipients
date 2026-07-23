@@ -1,0 +1,3 @@
+# Narrow unauthenticated Sieve-forwarding exception for Postfix service 588.
+# Exact recipient only; all other unauthenticated external relay remains denied.
+wzhouwzhou@gmail.com OK

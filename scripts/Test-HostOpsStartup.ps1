@@ -21,6 +21,17 @@ $script:rc=1
 if (Test-MailcowReady) { throw 'Docker inspection failure must refuse' }
 $text=[IO.File]::ReadAllText($path)
 if (-not $text.Contains('if (-not $InspectOnly -and -not [string]::IsNullOrWhiteSpace($RecoveryBarrierId))')) { throw 'Recovery must never run during InspectOnly' }
-if (-not $text.Contains('Invoke-HostOpsRestoreRecordedWorkloads.ps1') -or -not $text.Contains('-Phase Mailcow')) { throw 'Existing exact recovery owner required' }
-if ($text -match 'Start-ScheduledTask|docker.exe.+start') { throw 'Cold-boot callback must not create a new start policy' }
-'PASS_MAILCOW_OWNER_STARTUP: 6 checks; no live operations'
+if (-not $text.Contains('function Invoke-MailcowRecordedRecovery') -or -not $text.Contains('Assert-MailcowRecordedDockerIdentity') -or $text.Contains('Invoke-HostOpsRestoreRecordedWorkloads.ps1')) { throw 'Exact recovery must be service-owned without the old HostOps application controller' }
+if ($text -match 'Start-ScheduledTask') { throw 'Cold-boot callback must not install or dispatch Windows tasks' }
+$identityFn=$ast.Find({param($a)$a -is [Management.Automation.Language.FunctionDefinitionAst] -and $a.Name -ceq 'Assert-MailcowRecordedDockerIdentity'},$false)
+. ([scriptblock]::Create($identityFn.Extent.Text))
+$expected=[pscustomobject]@{short_id='012345';image='registry/image:one'}
+$actual=[pscustomobject]@{id='012345abcdef';image='registry/image:one'}
+Assert-MailcowRecordedDockerIdentity -Expected $expected -Actual $actual -Name mailcow-fixture
+$refused=$false
+try{Assert-MailcowRecordedDockerIdentity -Expected $expected -Actual ([pscustomobject]@{id='deadbeef';image='registry/image:one'}) -Name mailcow-fixture}catch{$refused=$true}
+if(-not $refused){throw 'Changed container identity must be refused'}
+$refused=$false
+try{Assert-MailcowRecordedDockerIdentity -Expected $expected -Actual ([pscustomobject]@{id='012345abcdef';image='other/image'}) -Name mailcow-fixture}catch{$refused=$true}
+if(-not $refused){throw 'Changed container image must be refused'}
+'PASS_MAILCOW_OWNER_STARTUP: ready/critical/exact-recovery checks; no live operations'

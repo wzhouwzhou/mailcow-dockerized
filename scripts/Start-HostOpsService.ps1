@@ -36,11 +36,58 @@ function Test-MailcowReady {
     return [pscustomobject]@{ count=$names.Count; names=$names; critical_services=@($serviceContract.critical_services) }
 }
 
+# Mailcow owns its exact same-session container recovery. HostOps supplies only
+# the protected barrier/plan and platform admission; no HostOps app controller.
+function Get-MailcowRecordedDockerIdentity {
+    param([Parameter(Mandatory=$true)][string]$Name)
+    $format='{{.Id}}|{{.Config.Image}}|{{.State.Running}}|{{index .Config.Labels "com.docker.compose.project"}}'
+    $inspection=Invoke-HostOpsExternal -FilePath 'docker.exe' -Arguments @('--context',[string]$serviceContract.docker_context,'inspect','--format',$format,$Name) -TimeoutSeconds 20
+    if ([int]$inspection.exit_code -ne 0) { throw ('MAILCOW_RECOVERY_INSPECT_FAILED:'+ $Name) }
+    $fields=([string]$inspection.stdout).Trim() -split '\|',4
+    if ($fields.Count -ne 4 -or [string]$fields[3] -cne [string]$serviceContract.compose_project) {
+        throw ('MAILCOW_RECOVERY_COMPOSE_IDENTITY_MISMATCH:'+$Name)
+    }
+    return [pscustomobject]@{id=[string]$fields[0];image=[string]$fields[1];running=([string]$fields[2] -ceq 'true')}
+}
+function Assert-MailcowRecordedDockerIdentity {
+    param($Expected,$Actual,[string]$Name)
+    if ($null -eq $Actual -or [string]::IsNullOrWhiteSpace([string]$Expected.short_id) -or
+        -not ([string]$Actual.id).StartsWith([string]$Expected.short_id,[StringComparison]::OrdinalIgnoreCase) -or
+        [string]$Actual.image -cne [string]$Expected.image) {
+        throw ('MAILCOW_RECOVERY_REPLACED_CONTAINER_REFUSED:'+$Name)
+    }
+}
+function Invoke-MailcowRecordedRecovery {
+    param([Parameter(Mandatory=$true)][string]$BarrierId)
+    $planPath=Get-HostOpsRecoveryArtifactPath -Config $config -Kind 'plan' -BarrierId $BarrierId
+    [void](Assert-HostOpsLifecycleFile -Config $config -Path $planPath)
+    $plan=Read-HostOpsJson -Path $planPath
+    if ($null -eq $plan -or [string]$plan.schema -cne 'entreflux.hostops.shutdown-recovery-plan.v1' -or
+        [string]$plan.barrier_id -cne $BarrierId -or [string]$plan.boot_id -cne (Get-HostOpsBootIdentity).boot_id) {
+        throw 'MAILCOW_RECOVERY_PROTECTED_PLAN_MISMATCH'
+    }
+    [void](Assert-HostOpsSameSessionRecoveryAdoption -Config $config -ExpectedReleaseGitSha $ReleaseGitSha -BarrierId $BarrierId)
+    [void](Assert-HostOpsRecoveryWorkloadContext -Config $config -BarrierId $BarrierId -ExpectedReleaseGitSha $ReleaseGitSha)
+    $owned=@($plan.mailcow_running | Sort-Object -Property @{Expression={
+        if ([string]$_.name -match '(mysql|redis)-mailcow'){0}
+        elseif ([string]$_.name -match 'watchdog'){100}
+        else{50}
+    }},@{Expression={$_.name}})
+    foreach($item in $owned){
+        $name=[string]$item.name
+        $before=Get-MailcowRecordedDockerIdentity -Name $name
+        Assert-MailcowRecordedDockerIdentity -Expected $item -Actual $before -Name $name
+        if(-not [bool]$before.running){
+            $started=Invoke-HostOpsExternal -FilePath 'docker.exe' -Arguments @('--context',[string]$serviceContract.docker_context,'start',$name) -TimeoutSeconds 90
+            if([int]$started.exit_code -ne 0){throw ('MAILCOW_RECOVERY_START_FAILED:'+$name)}
+        }
+        $after=Get-MailcowRecordedDockerIdentity -Name $name
+        Assert-MailcowRecordedDockerIdentity -Expected $item -Actual $after -Name $name
+        if(-not [bool]$after.running){throw ('MAILCOW_RECOVERY_CONTAINER_NOT_RUNNING:'+$name)}
+    }
+}
 if (-not $InspectOnly -and -not [string]::IsNullOrWhiteSpace($RecoveryBarrierId)) {
-    # Restore only exact original identities through the existing recovery owner.
-    $restoreScript=Join-Path $HostOpsRoot 'scripts\Invoke-HostOpsRestoreRecordedWorkloads.ps1'
-    $output=@(& $restoreScript -Phase Mailcow -BarrierId $RecoveryBarrierId -ReleaseGitSha $ReleaseGitSha -ConfigPath $ConfigPath -Apply)
-    if ($output.Count -ne 1 -or [string]($output[0]|ConvertFrom-Json).status -cne 'READY') { throw 'SAME_SESSION_MAILCOW_EXACT_RESTORE_NOT_PROVED' }
+    Invoke-MailcowRecordedRecovery -BarrierId $RecoveryBarrierId
 }
 $mail=Test-MailcowReady
 if (-not $mail) {

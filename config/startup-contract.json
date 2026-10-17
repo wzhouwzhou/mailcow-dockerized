@@ -1,0 +1,15 @@
+{
+  "compose_project": "mailcowdockerized",
+  "expected_min_running_containers": 19,
+  "ready_timeout_seconds": 180,
+  "critical_services": [
+    "mysql-mailcow",
+    "redis-mailcow",
+    "postfix-mailcow",
+    "dovecot-mailcow",
+    "nginx-mailcow",
+    "unbound-mailcow",
+    "watchdog-mailcow"
+  ],
+  "docker_context": "desktop-linux"
+}

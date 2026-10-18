@@ -38,15 +38,18 @@ if ([int]$pktmon.exit_code -ne 0) {
 
 function Get-RunningMailcow {
     $r = Invoke-HostOpsExternal -FilePath 'docker.exe' -Arguments @('--context', $context, 'ps', '--filter', ('label=com.docker.compose.project=' + $project), '--format', '{{.Names}}') -TimeoutSeconds 30
-    if ($r.exit_code -ne 0) { return $null }
-    return @($r.output | ForEach-Object { ([string]$_).Trim() } | Where-Object { $_.Length -gt 0 })
+    if ($r.exit_code -ne 0) { return [pscustomobject]@{ available=$false; names=@() } }
+    # An empty successful array otherwise disappears through the PS pipeline
+    # and becomes $null, falsely reporting engine failure after a correct stop.
+    return [pscustomobject]@{ available=$true; names=@($r.output | ForEach-Object { ([string]$_).Trim() } | Where-Object { $_.Length -gt 0 }) }
 }
 
-$running = Get-RunningMailcow
-if ($null -eq $running) {
+$probe = Get-RunningMailcow
+if (-not $probe.available) {
     Write-Output 'mailcow: engine unreachable; already stopped'
     exit 0
 }
+$running = @($probe.names)
 if ($InspectOnly) {
     Write-Output ('mailcow: running containers=' + $running.Count + ' (inspect only)')
     exit 0
@@ -65,11 +68,12 @@ if ([int]$stop.exit_code -ne 0) {
     Write-Output ('mailcow: compose stop failed rc=' + [int]$stop.exit_code)
     exit 1
 }
-$after = Get-RunningMailcow
-if ($null -eq $after) {
+$probe = Get-RunningMailcow
+if (-not $probe.available) {
     Write-Output 'mailcow: engine unreachable after stop; cannot verify'
     exit 1
 }
+$after = @($probe.names)
 if ($after.Count -gt 0) {
     Write-Output ('mailcow: containers still running: ' + ($after -join ','))
     exit 1

@@ -16,6 +16,26 @@ $context = [string]$serviceContract.docker_context
 $project = [string]$serviceContract.compose_project
 $repoRoot = Split-Path -Parent $PSScriptRoot
 
+# Mail evidence comes first: stop the multi-file PktMon capture and prove its
+# durable offload before any compose stop. The PktMon owner is the
+# mailcow-nginx-mail-ingress repo; its hook is a child powershell process and
+# only its exit code carries meaning.
+$pktmonHook = 'C:\Users\wzhou\Documents\Code\entreflux\mailcow-nginx-mail-ingress\scripts\Stop-PktMonForHostDown.ps1'
+if (-not (Test-Path -LiteralPath $pktmonHook -PathType Leaf)) {
+    Write-Output ('mailcow: pktmon owner hook missing ' + $pktmonHook)
+    exit 1
+}
+$pktmonArgs = @('-NoProfile','-NonInteractive','-ExecutionPolicy','Bypass','-File',$pktmonHook,'-HostOpsRoot',$HostOpsRoot,'-ReleaseGitSha',$ReleaseGitSha)
+if (-not [string]::IsNullOrWhiteSpace($ConfigPath)) { $pktmonArgs += @('-ConfigPath',$ConfigPath) }
+if (-not [string]::IsNullOrWhiteSpace($RecoveryBarrierId)) { $pktmonArgs += @('-RecoveryBarrierId',$RecoveryBarrierId) }
+if ($InspectOnly) { $pktmonArgs += '-InspectOnly' }
+$pktmon = Invoke-HostOpsExternal -FilePath 'powershell.exe' -Arguments $pktmonArgs -TimeoutSeconds 300
+foreach ($line in @($pktmon.output)) { Write-Output ('pktmon-owner: ' + [string]$line) }
+if ([int]$pktmon.exit_code -ne 0) {
+    Write-Output ('mailcow: pktmon owner failed rc=' + [int]$pktmon.exit_code)
+    exit 1
+}
+
 function Get-RunningMailcow {
     $r = Invoke-HostOpsExternal -FilePath 'docker.exe' -Arguments @('--context', $context, 'ps', '--filter', ('label=com.docker.compose.project=' + $project), '--format', '{{.Names}}') -TimeoutSeconds 30
     if ($r.exit_code -ne 0) { return $null }

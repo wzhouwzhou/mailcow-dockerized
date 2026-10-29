@@ -15,7 +15,8 @@ $serviceContract=Get-Content -LiteralPath (Join-Path $PSScriptRoot '..\config\st
 if ($InspectOnly) {
     # Read-only inspection never adopts a pending next-boot release.
 } elseif ([string]::IsNullOrWhiteSpace($RecoveryBarrierId)) {
-    [void](Assert-HostOpsActivationEligible -Config $config -ExpectedReleaseGitSha $ReleaseGitSha)
+    # Ordinary start: HostOps has already admitted current-boot capabilities. The legacy
+    # next-boot activation marker is HostOps state, not start authority for this service.
 } else {
     [void](Assert-HostOpsRecoveryWorkloadContext -Config $config -BarrierId $RecoveryBarrierId -ExpectedReleaseGitSha $ReleaseGitSha)
     [void](Assert-HostOpsSameSessionRecoveryAdoption -Config $config -ExpectedReleaseGitSha $ReleaseGitSha -BarrierId $RecoveryBarrierId)

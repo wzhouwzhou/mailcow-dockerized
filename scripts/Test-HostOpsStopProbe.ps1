@@ -16,4 +16,6 @@ if($probe.available){throw 'Unavailable engine accepted'}
 $script:result=[pscustomobject]@{exit_code=0;output=@('mailcow-postfix','mailcow-dovecot')}
 $probe=Get-RunningMailcow
 if(-not $probe.available -or $probe.names.Count -ne 2){throw 'Running containers lost'}
-[pscustomobject]@{status='PASS_MAILCOW_OWNER_STOP_PROBE';checks=3;production_mutation=$false}|ConvertTo-Json -Compress
+$scriptText=[IO.File]::ReadAllText((Join-Path $PSScriptRoot 'Stop-HostOpsService.ps1'))
+if(-not $scriptText.Contains("Invoke-HostOpsExternal -FilePath 'C:\Program Files\Docker\Docker\resources\bin\docker-compose.exe'")){throw 'Owner stop must use installed standalone Compose, not missing Docker plugin'}
+[pscustomobject]@{status='PASS_MAILCOW_OWNER_STOP_PROBE';checks=4;production_mutation=$false}|ConvertTo-Json -Compress

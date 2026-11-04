@@ -60,7 +60,7 @@ if ($running.Count -eq 0) {
 }
 Push-Location -LiteralPath $repoRoot
 try {
-    $stop = Invoke-HostOpsExternal -FilePath 'docker.exe' -Arguments @('--context', $context, 'compose', '-p', $project, 'stop', '-t', '90') -TimeoutSeconds 300
+    $stop = Invoke-HostOpsExternal -FilePath 'C:\Program Files\Docker\Docker\resources\bin\docker-compose.exe' -Arguments @('--context', $context, '--project-directory', $repoRoot, '--env-file', (Join-Path $repoRoot 'mailcow.conf'), '-p', $project, 'stop', '-t', '90') -TimeoutSeconds 300
 } finally {
     Pop-Location
 }

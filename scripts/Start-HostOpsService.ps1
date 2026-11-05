@@ -37,6 +37,23 @@ function Test-MailcowReady {
     return [pscustomobject]@{ count=$names.Count; names=$names; critical_services=@($serviceContract.critical_services) }
 }
 
+# DOWN stops Mailcow with compose stop, and Docker does not restart containers
+# stopped on purpose. Start only the existing project containers; never up,
+# create, recreate, pull or down. Readiness below decides success, so a failed
+# start is warned about here rather than thrown.
+function Start-MailcowStoppedProjectContainers {
+    $repoRoot = Split-Path -Parent $PSScriptRoot
+    Push-Location -LiteralPath $repoRoot
+    try {
+        $started = Invoke-HostOpsExternal -FilePath 'docker.exe' -Arguments @('--context',[string]$serviceContract.docker_context,'compose','-p',[string]$serviceContract.compose_project,'start') -TimeoutSeconds 120
+    } finally {
+        Pop-Location
+    }
+    if ([int]$started.exit_code -ne 0) {
+        Write-Warning ('MAILCOW_COMPOSE_START_NOT_CLEAN:rc=' + [int]$started.exit_code + '; readiness check decides')
+    }
+}
+
 # Mailcow owns its exact same-session container recovery. HostOps supplies only
 # the protected barrier/plan and platform admission; no HostOps app controller.
 function Get-MailcowRecordedDockerIdentity {
@@ -93,6 +110,8 @@ if (-not $InspectOnly -and -not [string]::IsNullOrWhiteSpace($RecoveryBarrierId)
 $mail=Test-MailcowReady
 if (-not $mail) {
     if ($InspectOnly) { throw 'Mailcow inspection requires the existing critical containers to be running' }
+    # Ordinary UP only: the recovery barrier path above already restores its protected plan exactly.
+    if ([string]::IsNullOrWhiteSpace($RecoveryBarrierId)) { Start-MailcowStoppedProjectContainers }
     $mail=Wait-HostOpsCondition -TimeoutSeconds ([int]$serviceContract.ready_timeout_seconds) -PollMilliseconds 3000 -Description 'Mailcow restart-always workload recovery' -Condition { Test-MailcowReady }
 }
 if (-not $mail) { throw 'Mailcow critical containers did not become ready' }

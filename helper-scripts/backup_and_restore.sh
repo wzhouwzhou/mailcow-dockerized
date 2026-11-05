@@ -176,7 +176,7 @@ function backup() {
         ${DEBIAN_DOCKER_IMAGE} /bin/tar --warning='no-file-ignored' --use-compress-program="zstd --rsyncable -T${THREADS}" -Pcvpf /backup/backup_postfix.tar.zst /postfix
       ;;&
     mysql|all)
-      SQLIMAGE=$(grep -iEo '(mysql|mariadb)\:.+' ${COMPOSE_FILE})
+      SQLIMAGE=$(grep -iEo '(mysql|mariadb)\:.+' ${COMPOSE_FILE} | tr -d '\r')
       if [[ -z "${SQLIMAGE}" ]]; then
         echo "Could not determine SQL image version, skipping backup..."
         shift
@@ -352,7 +352,7 @@ function restore() {
       docker start $(docker ps -aqf name=postfix-mailcow)
       ;;
     mysql|mariadb)
-      SQLIMAGE=$(grep -iEo '(mysql|mariadb)\:.+' ${COMPOSE_FILE})
+      SQLIMAGE=$(grep -iEo '(mysql|mariadb)\:.+' ${COMPOSE_FILE} | tr -d '\r')
       if [[ -z "${SQLIMAGE}" ]]; then
         echo "Could not determine SQL image version, skipping restore..."
         shift
